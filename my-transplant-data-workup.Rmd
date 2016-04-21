@@ -1,0 +1,108 @@
+---
+title: "Analysis of my transplant data"
+author: "Matthew Pietrzykowski"
+date: "March 27, 2016"
+output: 
+  html_document: 
+    theme: cerulean
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+source("setup.R")
+
+## read the data
+fName <- "Transplant Log.xlsx"
+shtNames <- c("BP-weight-temp", "Labs", "med list", "Urine-JP", "Fluids")
+trnsPlantSheets <- lapply(shtNames
+                          , function(i){
+                              read_excel(path = fName, sheet = i)
+                          })
+names(trnsPlantSheets) <- shtNames
+```
+
+
+```{r preprocess}
+## re-format the Labs data and fix the dates
+labsData <- trnsPlantSheets[["Labs"]] %>% 
+  gather(Dates, Values, -Test, -Lower, -Upper) %>%
+  mutate(Dates = as.POSIXct(as.numeric(Dates) * (60*60*24)
+                            , origin = "1899-12-30"
+                            , tz = "GMT")
+         , InDays = as.numeric(difftime(Dates, min(Dates), units = "days"))
+         , InWeeks = as.numeric(difftime(Dates, min(Dates), units = "weeks")))
+
+```
+## View the lab data
+
+```{r viewdata, fig.align = 'center'}
+## 1. view the Labs data
+plotData <- labsData
+ggplot(plotData, aes(x = Dates, y = Values)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~Test, scales = "free")
+```
+
+The panel plot shows the trends the some of the labs reported in my bloodwork.
+
+## Fit the Creatnine trend with a nonlinear model and estimate the value at day 28
+
+```{r fitCreatnine, fig.align = 'center'}
+## 2. fit the Creatnine data
+plotData <- labsData %>% dplyr::filter(Test == "Creatnine"
+                                       , InDays >= 10)
+
+fxLogis <- function(x, Asym, xmid, scal){
+  Asym/(1 + exp((xmid - log(x))/scal))
+}
+
+fxAsymp <- function(x, Asym, R0, lrc){
+  Asym + (R0-Asym)*exp(-exp(lrc)*x)
+}
+
+# Make plot and add a curve.
+with(plotData, plot(InDays, Values, ylim = c(0,5), xlim = c(5, 31)
+                    , ylab = "Creatnine"
+                    , xlab = "Days from Transplant"
+                    , main = "Creatnine trend and fit"))
+with(plotData, lines(InDays, Values, lty = 3))
+abline(h = 1, col = "black", lty = 2)
+
+# Fit a declining logistic function, e.g. scal parameter is negative 
+creatFit1 <- nls(Values ~ Asym/(1 + exp((xmid - log(InDays))/scal))
+                 , data = plotData
+                 , start = list(Asym = 10, xmid = 2, scal = -2))
+
+creatFit2 <- nls(Values ~ Asym + (R0-Asym)*exp(-exp(lrc)*InDays)
+                 , data = plotData
+                 , start = list(Asym = 2.5, R0 = 10, lrc = -1.25))
+
+# add fit line
+xFit <- seq(0,31,0.1)
+creatCoefs <- coef(creatFit1)
+fitLine1 <- fxLogis(x = xFit, creatCoefs[1], creatCoefs[2], creatCoefs[3])
+lines(xFit, fitLine1, col = "blue", lwd = 2)
+creatCoefs <- coef(creatFit2)
+fitLine2 <- fxAsymp(x = xFit, creatCoefs[1], creatCoefs[2], creatCoefs[3])
+lines(xFit, fitLine2, col = "red", lwd = 2)
+
+
+# estimated Creatnine at day 28
+print(
+  paste("The estimated Creatnine for day 31 is: "
+        , round(
+          predict(creatFit2, newdata = data.frame(InDays = 31)), 2
+        )
+  )
+)
+
+```
+
+## Urine output and fluid balance
+
+

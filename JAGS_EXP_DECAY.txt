@@ -1,0 +1,14 @@
+
+model {
+    # Likelihood
+    for( i in 1 : Ndata ) {
+        y[i] ~ dnorm( mu[i] , tau )
+        mu[i] <- Asym + (R0-Asym)*exp(-exp(lrc)*x[i])
+    }
+    # Prior distributions
+    Asym ~ dnorm(0 , 1.0E-12)
+    R0   ~ dnorm(0 , 1.0E-12)
+    lrc  ~ dnorm(0, 1.0E-12)
+    tau  ~ dgamma(0.001 , 0.001)
+}
+

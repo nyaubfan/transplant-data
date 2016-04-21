@@ -1,0 +1,13 @@
+
+model {
+# Likelihood
+for( i in 1 : Ndata ) {
+y[i] ~ dnorm( mu[i] , tau )
+mu[i] <- exp( beta1 * ( x[i] - beta0 ) )
+}
+# Prior distributions
+beta0 ~ dnorm( 0 , 1.0E-12 )
+beta1 ~ dnorm( 0 , 1.0E-12 )
+tau ~ dgamma( 0.001 , 0.001 )
+}
+
